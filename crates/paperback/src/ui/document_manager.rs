@@ -21,6 +21,8 @@ use wxdragon::{
 	prelude::*,
 };
 
+#[cfg(target_os = "windows")]
+use super::rtf_write::{self, RtfFontInfo};
 use super::{
 	main_window::{SLEEP_TIMER_DURATION_MINUTES, SLEEP_TIMER_START_MS},
 	menu_ids, status,
@@ -212,8 +214,7 @@ impl DocumentManager {
 		sizer.add(&text_ctrl, 1, SizerFlag::Expand | SizerFlag::All, 0);
 		panel.set_sizer(sizer, true);
 		let content = session.content();
-		fill_text_ctrl(text_ctrl, &content);
-		apply_formatting_markers_to_ctrl(text_ctrl, &session);
+		fill_text_ctrl_with_formatting(text_ctrl, &session, &content);
 		apply_readability_format_to_ctrl(
 			text_ctrl,
 			config.get_line_spacing(),
@@ -549,8 +550,7 @@ impl DocumentManager {
 			let sizer = BoxSizer::builder(Orientation::Vertical).build();
 			sizer.add(&text_ctrl, 1, SizerFlag::Expand | SizerFlag::All, 0);
 			tab.panel.set_sizer(sizer, true);
-			fill_text_ctrl(text_ctrl, &content);
-			apply_formatting_markers_to_ctrl(text_ctrl, &tab.session);
+			fill_text_ctrl_with_formatting(text_ctrl, &tab.session, &content);
 			if let Some(font) = build_font_from_readability(&rf) {
 				text_ctrl.set_font(&font);
 			}
@@ -628,8 +628,7 @@ impl DocumentManager {
 			};
 			tab.session = new_session;
 			let content = tab.session.content();
-			fill_text_ctrl(tab.text_ctrl, &content);
-			apply_formatting_markers_to_ctrl(tab.text_ctrl, &tab.session);
+			fill_text_ctrl_with_formatting(tab.text_ctrl, &tab.session, &content);
 			if let Some(font) = build_font_from_readability(&rf) {
 				tab.text_ctrl.set_font(&font);
 			}
@@ -830,6 +829,126 @@ fn build_document_load_error_message(path: &Path, error: &str) -> String {
 
 fn fill_text_ctrl(text_ctrl: TextCtrl, content: &str) {
 	text_ctrl.set_value(content);
+}
+
+/// Sets `content` on `text_ctrl` and applies its bold/italic/underline markers.
+///
+/// On Windows this streams a single RTF blob into the native RichEdit control
+/// via `EM_STREAMIN` (see `stream_rtf_into_ctrl`) instead of issuing one
+/// `SetStyle` call per formatting span, which is far cheaper on documents with
+/// thousands of spans. `wxTextCtrl::SetValue` can't be used for this — it does
+/// not forward to the native `WM_SETTEXT` handler that auto-detects a `{\rtf`
+/// prefix, so it would just store the markup as literal text. If streaming
+/// doesn't round-trip back to the original content, this falls back to the
+/// plain-text + per-segment path used on every other platform.
+fn fill_text_ctrl_with_formatting(text_ctrl: TextCtrl, session: &DocumentSession, content: &str) {
+	let markers = session.get_formatting_markers();
+	let segments = merge_formatting_markers(&markers);
+
+	#[cfg(target_os = "windows")]
+	if !segments.is_empty() {
+		if let Some(font) = text_ctrl.get_font() {
+			let rtf = rtf_write::build_rtf(
+				content,
+				&segments,
+				&RtfFontInfo { face_name: font.get_face_name(), point_size: font.get_point_size() },
+			);
+			if stream_rtf_into_ctrl(text_ctrl, &rtf) {
+				let round_tripped = text_ctrl.get_value();
+				// RichEdit's document model implicitly terminates the buffer, so a
+				// wholly-trailing "\par" (with no content after it) doesn't manifest
+				// as a stored character. Tolerate exactly that one known, harmless
+				// discrepancy rather than falling back over it: the very last
+				// position of the document ends up one short of `content`, which
+				// only matters at the literal last character of the book.
+				let matched = round_tripped == content
+					|| (content.ends_with('\n')
+						&& round_tripped.len() + 1 == content.len()
+						&& content.starts_with(round_tripped.as_str()));
+				if matched {
+					return;
+				}
+			}
+			// Never leave raw RTF markup on screen for an accessibility user;
+			// fall back below to the plain-text + segment-loop path.
+			tracing::warn!("RTF fast path for formatting markers did not round-trip; falling back");
+		}
+	}
+
+	fill_text_ctrl(text_ctrl, content);
+	apply_formatting_markers_to_ctrl_from_segments(text_ctrl, &segments);
+}
+
+#[cfg(target_os = "windows")]
+struct RtfStreamCursor<'a> {
+	data: &'a [u8],
+	pos: usize,
+}
+
+/// `EDITSTREAMCALLBACK` for `EM_STREAMIN`: RichEdit calls this repeatedly,
+/// asking for up to `cb` bytes each time, until we report 0 bytes written
+/// (end of stream) or return a nonzero error code. Called synchronously
+/// within `SendMessageW` on the same thread, so the `RtfStreamCursor` borrow
+/// in `stream_rtf_into_ctrl` stays valid for every call.
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn rtf_stream_read_callback(dwcookie: usize, pbbuff: *mut u8, cb: i32, pcb: *mut i32) -> u32 {
+	if pbbuff.is_null() || pcb.is_null() || dwcookie == 0 {
+		return 1;
+	}
+	let cursor = unsafe { &mut *(dwcookie as *mut RtfStreamCursor<'_>) };
+	let remaining = cursor.data.len() - cursor.pos;
+	let to_copy = remaining.min(usize::try_from(cb.max(0)).unwrap_or(0));
+	if to_copy > 0 {
+		unsafe { std::ptr::copy_nonoverlapping(cursor.data[cursor.pos..].as_ptr(), pbbuff, to_copy) };
+		cursor.pos += to_copy;
+	}
+	unsafe { *pcb = i32::try_from(to_copy).unwrap_or(i32::MAX) };
+	0
+}
+
+/// Feeds `rtf` into the native RichEdit control behind `text_ctrl` via the
+/// Win32 `EM_STREAMIN` message. `wxTextCtrl::SetValue` cannot be used for this:
+/// it does not forward to the native `WM_SETTEXT` handler that auto-detects a
+/// `{\rtf` prefix, so it just stores the markup as literal text (confirmed by
+/// a round-trip mismatch where `GetValue()` returned the raw RTF source
+/// unchanged). `EM_STREAMIN` is the documented, explicit way to load RTF into
+/// a RichEdit control, and is why this needs a raw `SendMessageW` call rather
+/// than a wx-level API — the same pattern already used for letter-spacing
+/// (`EM_SETCHARFORMAT`) in `apply_readability_format_to_ctrl`.
+///
+/// Returns `false` if the control has no native handle yet or the stream
+/// didn't fully complete, in which case callers should fall back to the
+/// plain-text + segment-loop path rather than trust partial content.
+#[cfg(target_os = "windows")]
+fn stream_rtf_into_ctrl(text_ctrl: TextCtrl, rtf: &str) -> bool {
+	use windows::Win32::{
+		Foundation::{HWND, LPARAM, WPARAM},
+		UI::{
+			Controls::RichEdit::{EDITSTREAM, EM_STREAMIN, SF_RTF},
+			WindowsAndMessaging::SendMessageW,
+		},
+	};
+
+	let hwnd_ptr = text_ctrl.get_handle();
+	if hwnd_ptr.is_null() {
+		return false;
+	}
+	let hwnd = HWND(hwnd_ptr);
+	let mut cursor = RtfStreamCursor { data: rtf.as_bytes(), pos: 0 };
+	let mut stream = EDITSTREAM {
+		dwCookie: std::ptr::addr_of_mut!(cursor) as usize,
+		dwError: 0,
+		pfnCallback: Some(rtf_stream_read_callback),
+	};
+	unsafe {
+		SendMessageW(
+			hwnd,
+			EM_STREAMIN,
+			Some(WPARAM(SF_RTF as usize)),
+			Some(LPARAM(std::ptr::addr_of_mut!(stream) as isize)),
+		);
+	}
+	stream.dwError == 0 && cursor.pos == cursor.data.len()
 }
 
 pub fn apply_line_spacing_to_ctrl(text_ctrl: TextCtrl, line_spacing: i32) {
@@ -1041,29 +1160,137 @@ pub fn apply_readability_format_to_ctrl(
 	}
 }
 
-pub fn apply_formatting_markers_to_ctrl(text_ctrl: TextCtrl, session: &DocumentSession) {
-	let markers = session.get_formatting_markers();
-	if markers.is_empty() {
+/// A non-overlapping run of text with the union of bold/italic/underline
+/// styles active over it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FormatSegment {
+	pub start: i64,
+	pub end: i64,
+	pub bold: bool,
+	pub italic: bool,
+	pub underline: bool,
+}
+
+/// Merges bold/italic/underline markers (which may overlap, e.g. a bold word
+/// inside an italic sentence) into a sequence of non-overlapping segments, each
+/// carrying the union of the styles active over that range.
+///
+/// This is required because wxMSW's `wxTextCtrl::SetStyle` rewrites the *entire*
+/// font for a range whenever any font attribute is present in the `wxTextAttr`
+/// (it masks `CFM_FACE | CFM_SIZE | ...` unconditionally and fills unset fields
+/// from a default font — Arial 10pt). Applying overlapping single-style markers
+/// one at a time would therefore both reset the face/size and clobber each
+/// other's styles. Producing one combined style per non-overlapping segment
+/// avoids both problems and is correct on every platform.
+///
+/// Implemented as a sweep over +1/-1 events per style so it's O(n log n) instead
+/// of the naive O(n^2) "rescan every marker at every boundary" approach, which
+/// took several seconds on books with tens of thousands of formatting spans.
+pub fn merge_formatting_markers(markers: &[paperback_core::session::LineMarker]) -> Vec<FormatSegment> {
+	use paperback_core::session::MarkerTypeFfi;
+
+	#[derive(Clone, Copy)]
+	struct Event {
+		position: i64,
+		delta: i32,
+		style_idx: usize,
+	}
+
+	let mut events: Vec<Event> = Vec::new();
+	for m in markers {
+		if m.length <= 0 {
+			continue;
+		}
+		let style_idx = match m.mtype {
+			MarkerTypeFfi::Bold => 0,
+			MarkerTypeFfi::Italic => 1,
+			MarkerTypeFfi::Underline => 2,
+			_ => continue,
+		};
+		events.push(Event { position: m.position, delta: 1, style_idx });
+		events.push(Event { position: m.position + m.length, delta: -1, style_idx });
+	}
+	events.sort_unstable_by_key(|e| e.position);
+
+	let mut active = [0i32; 3];
+	let mut segments: Vec<FormatSegment> = Vec::new();
+	// The segment currently being extended, if the active style set is non-empty.
+	let mut open: Option<FormatSegment> = None;
+	let mut idx = 0;
+	while idx < events.len() {
+		let position = events[idx].position;
+		while idx < events.len() && events[idx].position == position {
+			active[events[idx].style_idx] += events[idx].delta;
+			idx += 1;
+		}
+		let (bold, italic, underline) = (active[0] > 0, active[1] > 0, active[2] > 0);
+		let same_style = open.is_some_and(|seg| seg.bold == bold && seg.italic == italic && seg.underline == underline);
+		if same_style {
+			// Style unchanged across this boundary: keep extending the open segment
+			// instead of splitting it into an adjacent duplicate.
+			open.as_mut().expect("same_style implies open is Some").end = position;
+		} else {
+			if let Some(mut seg) = open.take() {
+				seg.end = position;
+				if seg.bold || seg.italic || seg.underline {
+					segments.push(seg);
+				}
+			}
+			if bold || italic || underline {
+				open = Some(FormatSegment { start: position, end: position, bold, italic, underline });
+			}
+		}
+	}
+	if let Some(seg) = open {
+		if seg.bold || seg.italic || seg.underline {
+			segments.push(seg);
+		}
+	}
+	segments
+}
+
+fn apply_formatting_markers_to_ctrl_from_segments(text_ctrl: TextCtrl, segments: &[FormatSegment]) {
+	if segments.is_empty() {
 		return;
 	}
+	let base_font = text_ctrl.get_font();
 	text_ctrl.freeze();
-	for marker in markers {
+	for seg in segments {
 		let mut attr = wxdragon::widgets::textctrl::TextAttr::new();
-		match marker.mtype {
-			paperback_core::session::MarkerTypeFfi::Bold => {
+		if let Some(base) = &base_font {
+			let style = if seg.italic { FontStyle::Italic } else { base.get_style() };
+			let weight = if seg.bold { FontWeight::Bold } else { base.get_weight() };
+			let underlined = seg.underline || base.is_underlined();
+			if let Some(mut font) = Font::new_with_details(
+				base.get_point_size(),
+				base.get_family().as_i32(),
+				style.as_i32(),
+				weight.as_i32(),
+				underlined,
+				&base.get_face_name(),
+			) {
+				if base.is_strikethrough() {
+					font.set_strikethrough(true);
+				}
+				let encoding = base.get_encoding();
+				if encoding != 0 {
+					font.set_encoding(encoding);
+				}
+				attr.set_font(&font);
+			}
+		} else {
+			// No base font to preserve; fall back to per-attribute flags.
+			if seg.bold {
 				attr.set_font_weight(FontWeight::Bold);
 			}
-			paperback_core::session::MarkerTypeFfi::Italic => {
+			if seg.italic {
 				attr.set_font_style(FontStyle::Italic);
 			}
-			paperback_core::session::MarkerTypeFfi::Underline => {
+			if seg.underline {
 				attr.set_font_underlined(true);
 			}
-			_ => continue,
 		}
-		let start = marker.position;
-		let end = start + marker.length;
-		text_ctrl.set_style(start, end, &attr);
+		text_ctrl.set_style(seg.start, seg.end, &attr);
 	}
 	text_ctrl.thaw();
 }
@@ -1133,4 +1360,77 @@ fn parse_single_key_shortcut(label: &str) -> Option<(i32, bool)> {
 		return Some((key, shift));
 	}
 	None
+}
+
+#[cfg(test)]
+mod tests {
+	use paperback_core::session::{LineMarker, MarkerTypeFfi};
+
+	use super::{FormatSegment, merge_formatting_markers};
+
+	fn marker(mtype: MarkerTypeFfi, position: i64, length: i64) -> LineMarker {
+		LineMarker { mtype, position, text: String::new(), reference: String::new(), level: 0, length }
+	}
+
+	#[test]
+	fn no_markers_yields_no_segments() {
+		assert_eq!(merge_formatting_markers(&[]), Vec::new());
+	}
+
+	#[test]
+	fn zero_length_markers_are_ignored() {
+		let markers = [marker(MarkerTypeFfi::Bold, 5, 0)];
+		assert_eq!(merge_formatting_markers(&markers), Vec::new());
+	}
+
+	#[test]
+	fn non_format_markers_are_ignored() {
+		let markers = [marker(MarkerTypeFfi::Heading1, 0, 10), marker(MarkerTypeFfi::Link, 2, 3)];
+		assert_eq!(merge_formatting_markers(&markers), Vec::new());
+	}
+
+	#[test]
+	fn single_bold_marker_produces_one_segment() {
+		let markers = [marker(MarkerTypeFfi::Bold, 0, 4)];
+		assert_eq!(
+			merge_formatting_markers(&markers),
+			vec![FormatSegment { start: 0, end: 4, bold: true, italic: false, underline: false }]
+		);
+	}
+
+	#[test]
+	fn overlapping_bold_and_italic_keep_both_on_the_intersection() {
+		// Bold over [0,10), italic over [4,7): the middle run must carry both.
+		let markers = [marker(MarkerTypeFfi::Bold, 0, 10), marker(MarkerTypeFfi::Italic, 4, 3)];
+		assert_eq!(
+			merge_formatting_markers(&markers),
+			vec![
+				FormatSegment { start: 0, end: 4, bold: true, italic: false, underline: false },
+				FormatSegment { start: 4, end: 7, bold: true, italic: true, underline: false },
+				FormatSegment { start: 7, end: 10, bold: true, italic: false, underline: false },
+			]
+		);
+	}
+
+	#[test]
+	fn adjacent_identical_segments_are_coalesced() {
+		let markers = [marker(MarkerTypeFfi::Bold, 0, 4), marker(MarkerTypeFfi::Bold, 4, 4)];
+		assert_eq!(
+			merge_formatting_markers(&markers),
+			vec![FormatSegment { start: 0, end: 8, bold: true, italic: false, underline: false }]
+		);
+	}
+
+	#[test]
+	fn all_three_styles_can_stack() {
+		let markers = [
+			marker(MarkerTypeFfi::Bold, 0, 6),
+			marker(MarkerTypeFfi::Italic, 0, 6),
+			marker(MarkerTypeFfi::Underline, 0, 6),
+		];
+		assert_eq!(
+			merge_formatting_markers(&markers),
+			vec![FormatSegment { start: 0, end: 6, bold: true, italic: true, underline: true }]
+		);
+	}
 }
