@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paperback 0.8.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-16 12:22-0600\n"
+"POT-Creation-Date: 2026-08-18 16:53+0000\n"
 "PO-Revision-Date: 2026-06-25 21:58+0900\n"
 "Last-Translator: Kazto Kitabatake <contact@kitabatake1013.jp>\n"
 "Language-Team: \n"
@@ -58,6 +58,28 @@ msgstr "状態"
 msgid "Path"
 msgstr "パス"
 
+#. TRANSLATORS: Label for the status filter dropdown in the All Documents dialog
+#, fuzzy
+msgid "&Status:"
+msgstr "状態"
+
+#. TRANSLATORS: Option in the All Documents status filter to show documents of every status
+#. TRANSLATORS: Option in the filter dropdown to show all entries
+msgid "All"
+msgstr "すべて"
+
+#. TRANSLATORS: Status of a document that is currently open in a tab
+msgid "Open"
+msgstr "オープン"
+
+#. TRANSLATORS: Status of a document that was previously opened but is currently closed
+msgid "Closed"
+msgstr "クローズ"
+
+#. TRANSLATORS: Status of a document whose file could not be found on disk
+msgid "Missing"
+msgstr "見つかりません"
+
 #. TRANSLATORS: Button label to open the selected document
 msgid "&Open"
 msgstr "開く(&O)"
@@ -95,17 +117,35 @@ msgstr "確認"
 msgid "Are you sure you want to remove all documents from the list? This will also remove all reading positions and bookmarks."
 msgstr "リストからすべての文書を削除しますか？これにより、すべての文書の読み上げ位置としおりも削除されます。"
 
-#. TRANSLATORS: Status of a document that is currently open in a tab
-msgid "Open"
-msgstr "オープン"
+#. TRANSLATORS: Status bar text in the All Documents dialog when the list is empty
+#, fuzzy
+msgid "No documents."
+msgstr "書類なし"
 
-#. TRANSLATORS: Status of a document that was previously opened but is currently closed
-msgid "Closed"
-msgstr "クローズ"
+#. TRANSLATORS: Status bar text in the All Documents dialog when the list contains exactly one document and none are selected
+#, fuzzy
+msgid "1 document."
+msgstr "文書"
 
-#. TRANSLATORS: Status of a document whose file could not be found on disk
-msgid "Missing"
-msgstr "見つかりません"
+#. TRANSLATORS: Status bar text in the All Documents dialog showing the total number of documents in the list. The %d placeholder is replaced with the count.
+#, fuzzy
+msgid "%d documents."
+msgstr "文書"
+
+#. TRANSLATORS: Status bar text in the All Documents dialog when the single document in the list is selected
+#, fuzzy
+msgid "1 of 1 document selected."
+msgstr "ドキュメントが再読み込みされました。"
+
+#. TRANSLATORS: Status bar text in the All Documents dialog when every document in the list is selected. The %d placeholder is replaced with the total count.
+#, fuzzy
+msgid "All %d documents selected."
+msgstr "すべての文書"
+
+#. TRANSLATORS: Status bar text in the All Documents dialog showing how many of the total documents are selected. The first %d is the selected count, the second %d is the total count.
+#, fuzzy
+msgid "%d of %d documents selected."
+msgstr "文書の終わり"
 
 #. TRANSLATORS: Message/prompt shown in the file picker dialog to locate a missing book
 #, fuzzy
@@ -119,10 +159,6 @@ msgstr "しおりへ移動"
 #. TRANSLATORS: Label for the bookmark filter dropdown
 msgid "&Filter:"
 msgstr "フィルター(&F):"
-
-#. TRANSLATORS: Option in the filter dropdown to show all entries
-msgid "All"
-msgstr "すべて"
 
 #. TRANSLATORS: Option in the filter dropdown to show bookmarks only
 msgid "Bookmarks"
@@ -981,6 +1017,78 @@ msgid "No recent documents."
 msgstr "最近開いた文書はありません。"
 
 #, fuzzy
+msgid "&Undo\tCtrl+Z"
+msgstr "&元に戻す    Ctrl+Z"
+
+#, fuzzy
+msgid "&Redo\tCtrl+Shift+Z"
+msgstr "&やり直し    Ctrl+Shift+Z"
+
+#, fuzzy
+msgid "Cu&t\tCtrl+X"
+msgstr "Cu&t    Ctrl+X"
+
+#, fuzzy
+msgid "&Copy\tCtrl+C"
+msgstr "&コピー    Ctrl+C"
+
+#, fuzzy
+msgid "&Paste\tCtrl+V"
+msgstr "&貼り付け    Ctrl+V"
+
+#, fuzzy
+msgid "Select &All\tCtrl+A"
+msgstr "「すべて選択」    Ctrl+A"
+
+#, fuzzy
+msgid "&Open..."
+msgstr "開く(&O)"
+
+msgid "Open a document"
+msgstr "文書を開きます"
+
+#, fuzzy
+msgid "&Close"
+msgstr "閉じる"
+
+msgid "Close the current document"
+msgstr "現在の文書を閉じます"
+
+#, fuzzy
+msgid "Close &All"
+msgstr "閉じる"
+
+msgid "Close all documents"
+msgstr "すべての文書を閉じます"
+
+#, fuzzy
+msgid "Reopen &Last Closed"
+msgstr "最後に閉じた文書を開く(&L)\tCtrl+Shift+T"
+
+msgid "Reopen the last closed document"
+msgstr "最後に閉じた文書を開きます"
+
+msgid "&Recent Documents"
+msgstr "最近開いた文書(&R)"
+
+msgid "Open a recent document"
+msgstr "最近開いた文書を開きます"
+
+#. TRANSLATORS: System tray menu item to quit the application
+msgid "E&xit"
+msgstr "終了(&x)"
+
+msgid "Exit the application"
+msgstr "アプリケーションを終了します"
+
+msgid "(No recent documents)"
+msgstr "(最近開いた文書なし)"
+
+#, fuzzy
+msgid "Show All..."
+msgstr "すべて表示"
+
+#, fuzzy
 msgid "Previous Section"
 msgstr "前のセクション\t["
 
@@ -1196,87 +1304,6 @@ msgstr "メモの表示"
 msgid "View the note at current position"
 msgstr "現在位置のメモを表示します"
 
-msgid "&File"
-msgstr "ファイル(&F)"
-
-msgid "&Go"
-msgstr "移動(&G)"
-
-msgid "&Tools"
-msgstr "ツール(&T)"
-
-msgid "&Help"
-msgstr "ヘルプ(&H)"
-
-#, fuzzy
-msgid "&Edit"
-msgstr "&編集"
-
-#, fuzzy
-msgid "&Open..."
-msgstr "開く(&O)"
-
-msgid "Open a document"
-msgstr "文書を開きます"
-
-#, fuzzy
-msgid "&Close"
-msgstr "閉じる"
-
-msgid "Close the current document"
-msgstr "現在の文書を閉じます"
-
-#, fuzzy
-msgid "Close &All"
-msgstr "閉じる"
-
-msgid "Close all documents"
-msgstr "すべての文書を閉じます"
-
-#, fuzzy
-msgid "Reopen &Last Closed"
-msgstr "最後に閉じた文書を開く(&L)\tCtrl+Shift+T"
-
-msgid "Reopen the last closed document"
-msgstr "最後に閉じた文書を開きます"
-
-msgid "&Recent Documents"
-msgstr "最近開いた文書(&R)"
-
-msgid "Open a recent document"
-msgstr "最近開いた文書を開きます"
-
-#. TRANSLATORS: System tray menu item to quit the application
-msgid "E&xit"
-msgstr "終了(&x)"
-
-msgid "Exit the application"
-msgstr "アプリケーションを終了します"
-
-#, fuzzy
-msgid "&Undo\tCtrl+Z"
-msgstr "&元に戻す    Ctrl+Z"
-
-#, fuzzy
-msgid "&Redo\tCtrl+Shift+Z"
-msgstr "&やり直し    Ctrl+Shift+Z"
-
-#, fuzzy
-msgid "Cu&t\tCtrl+X"
-msgstr "Cu&t    Ctrl+X"
-
-#, fuzzy
-msgid "&Copy\tCtrl+C"
-msgstr "&コピー    Ctrl+C"
-
-#, fuzzy
-msgid "&Paste\tCtrl+V"
-msgstr "&貼り付け    Ctrl+V"
-
-#, fuzzy
-msgid "Select &All\tCtrl+A"
-msgstr "「すべて選択」    Ctrl+A"
-
 #, fuzzy
 msgid "&Find..."
 msgstr "検索(&F)"
@@ -1385,6 +1412,41 @@ msgstr "&コンテナ"
 #, fuzzy
 msgid "Navigate by containers"
 msgstr "コンテナ別に閲覧する"
+
+#, fuzzy
+msgid "&About Paperback"
+msgstr "Paperbackについて(&A)\tCtrl+F1"
+
+msgid "About this application"
+msgstr "このアプリケーションについて"
+
+#, fuzzy
+msgid "View Help in &Browser"
+msgstr "ブラウザーでヘルプを表示(&B)\tF1"
+
+msgid "View help in default browser"
+msgstr "既定のブラウザーでヘルプを表示します"
+
+#, fuzzy
+msgid "View Help in &Paperback"
+msgstr "Paperbackでヘルプを表示します"
+
+msgid "View help in Paperback"
+msgstr "Paperbackでヘルプを表示します"
+
+#, fuzzy
+msgid "Check for &Updates"
+msgstr "更新を確認します"
+
+msgid "Check for updates"
+msgstr "更新を確認します"
+
+#, fuzzy
+msgid "&Donate"
+msgstr "寄付(&D)\tCtrl+D"
+
+msgid "Support Paperback development"
+msgstr "Paperbackの開発を支援します"
 
 #, fuzzy
 msgid "&Import Document Data..."
@@ -1508,47 +1570,21 @@ msgstr "オプション"
 msgid "&Sleep Timer..."
 msgstr "スリープタイマー"
 
-#, fuzzy
-msgid "&About Paperback"
-msgstr "Paperbackについて(&A)\tCtrl+F1"
+msgid "&File"
+msgstr "ファイル(&F)"
 
-msgid "About this application"
-msgstr "このアプリケーションについて"
+msgid "&Go"
+msgstr "移動(&G)"
 
-#, fuzzy
-msgid "View Help in &Browser"
-msgstr "ブラウザーでヘルプを表示(&B)\tF1"
+msgid "&Tools"
+msgstr "ツール(&T)"
 
-msgid "View help in default browser"
-msgstr "既定のブラウザーでヘルプを表示します"
+msgid "&Help"
+msgstr "ヘルプ(&H)"
 
 #, fuzzy
-msgid "View Help in &Paperback"
-msgstr "Paperbackでヘルプを表示します"
-
-msgid "View help in Paperback"
-msgstr "Paperbackでヘルプを表示します"
-
-#, fuzzy
-msgid "Check for &Updates"
-msgstr "更新を確認します"
-
-msgid "Check for updates"
-msgstr "更新を確認します"
-
-#, fuzzy
-msgid "&Donate"
-msgstr "寄付(&D)\tCtrl+D"
-
-msgid "Support Paperback development"
-msgstr "Paperbackの開発を支援します"
-
-msgid "(No recent documents)"
-msgstr "(最近開いた文書なし)"
-
-#, fuzzy
-msgid "Show All..."
-msgstr "すべて表示"
+msgid "&Edit"
+msgstr "&編集"
 
 #. TRANSLATORS: Announced when the document has no sections to navigate
 msgid "No sections."

@@ -1181,4 +1181,32 @@ mod tests {
 		let missing_only = get_sorted_document_list(&config, &open_paths, "", Some(DocumentListStatus::Missing));
 		assert_eq!(missing_only.iter().map(|item| &item.path).collect::<Vec<_>>(), vec![&missing_path]);
 	}
+
+	#[test]
+	fn get_sorted_document_list_filters_by_status() {
+		use crate::util::test_support::TempDir;
+
+		let dir = TempDir::new("document-list-status-filter");
+		let open_path = dir.write_str("open.txt", "content");
+		let closed_path = dir.write_str("closed.txt", "content");
+		let missing_path = dir.join_str("missing.txt");
+		let mut config = ConfigManager::new();
+		config.initialized = true;
+		for path in [&open_path, &closed_path, &missing_path] {
+			config.add_recent_document(path);
+		}
+		let open_paths = vec![open_path.clone()];
+
+		let all = get_sorted_document_list(&config, &open_paths, "", None);
+		assert_eq!(all.len(), 3);
+
+		let open_only = get_sorted_document_list(&config, &open_paths, "", Some(DocumentListStatus::Open));
+		assert_eq!(open_only.iter().map(|item| &item.path).collect::<Vec<_>>(), vec![&open_path]);
+
+		let closed_only = get_sorted_document_list(&config, &open_paths, "", Some(DocumentListStatus::Closed));
+		assert_eq!(closed_only.iter().map(|item| &item.path).collect::<Vec<_>>(), vec![&closed_path]);
+
+		let missing_only = get_sorted_document_list(&config, &open_paths, "", Some(DocumentListStatus::Missing));
+		assert_eq!(missing_only.iter().map(|item| &item.path).collect::<Vec<_>>(), vec![&missing_path]);
+	}
 }
